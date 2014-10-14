@@ -22,12 +22,42 @@ CMD_MOVE_TO = 1
 CMD_LINE_TO = 2
 CMD_SEG_END = 7
 
+
 def decode(file):
     ''' Stub function to decode a mapbox vector tile file into a list of features.
     
         Not currently implemented, modeled on geojson.decode().
     '''
-    raise NotImplementedError('mapbox.decode() not yet written')
+    tile = vector_tile_pb2.tile()
+    pbf_data = file.read()
+    tile.ParseFromString(pbf_data)
+    features_by_layer = {}
+    for layer in tile.layers:
+        features_for_layer = features_by_layer.setdefault(layer.name, [])
+        keys = layer.keys
+        vals = layer.values
+        for feature in layer.features:
+            tags = feature.tags
+            props = {}
+            assert len(tags) % 2 == 0, 'Unexpected number of tags'
+            for key_idx, val_idx in zip(tags[::2], tags[1::2]):
+                key = keys[key_idx]
+                val = vals[val_idx]
+                value = parse_value(val)
+                props[key] = value
+            # ignore geometry for now
+            new_feature = ('geometry', props, feature.id)
+            features_for_layer.append(new_feature)
+    return features_by_layer
+
+
+def parse_value(val):
+    for candidate in ('bool_value', 'double_value', 'float_value', 'int_value',
+                      'sint_value', 'string_value', 'uint_value'):
+        if val.HasField(candidate):
+            return getattr(val, candidate)
+    raise ValueError('%s is an unknown value')
+
 
 def encode(file, features, coord, layer_name=''):
         tile = VectorTile(extents)
